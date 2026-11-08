@@ -77,7 +77,7 @@ jobs:
           export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
           export NDK_HOME="$(ls -d /usr/local/lib/android/sdk/ndk/* | sort -V | tail -1)"
           echo "Using NDK_HOME=$NDK_HOME"
-          pnpm tauri android build -t aarch64 --apk
+          pnpm tauri android build -t aarch64 --split-per-abi --apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
