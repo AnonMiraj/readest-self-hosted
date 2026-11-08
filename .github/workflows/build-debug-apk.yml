@@ -50,6 +50,12 @@ jobs:
         working-directory: apps/readest-app
         run: node scripts/patch-tauri-selfhost.mjs
 
+      - name: Re-init Android project for the selfhost package name
+        working-directory: apps/readest-app
+        run: |
+          rm -rf src-tauri/gen/android
+          pnpm tauri android init
+
       - name: Build debug arm64 APK
         working-directory: apps/readest-app
         run: |
