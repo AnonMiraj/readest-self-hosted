@@ -53,11 +53,8 @@ android {
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
         val storeFlavor = project.findProperty("storeFlavor")?.toString() ?: "foss"
-        missingDimensionStrategy("store", storeFlavor)
         // Handwriting (issue #3673): -PpenFlavor=booxPen links the BOOX Pen SDK
         // (plugins/tauri-plugin-native-bridge/android/README-pen.md).
-        val penFlavor = project.findProperty("penFlavor")?.toString() ?: "genericPen"
-        missingDimensionStrategy("pen", penFlavor)
         // Android Auto ships to the FOSS/GitHub builds only. Play's Auto
         // review rejected version code 11020 for inconsistent in-car audio and
         // blocked the entire release (#5038, #5235), so the Play build resolves
