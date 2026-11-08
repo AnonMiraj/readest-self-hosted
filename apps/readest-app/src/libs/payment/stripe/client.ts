@@ -20,10 +20,8 @@ export const getStripe = () => {
   return stripePromise;
 };
 
-const WEB_STRIPE_PLANS_URL = `${getAPIBaseUrl()}/stripe/plans`;
-const WEB_STRIPE_CHECKOUT_URL = `${getAPIBaseUrl()}/stripe/checkout`;
-const WEB_STRIPE_PORTAL_URL = `${getAPIBaseUrl()}/stripe/portal`;
 const SUBSCRIPTION_SUCCESS_PATH = '/user/subscription/success';
+const getStripeApiUrl = (path: string) => `${getAPIBaseUrl()}/stripe/${path}`;
 
 export interface StripeCheckoutResponse {
   sessionId?: string;
@@ -37,7 +35,7 @@ export type StripeAvailablePlan = AvailablePlan & {
 };
 
 export const fetchStripePlans = async () => {
-  const response = await fetch(WEB_STRIPE_PLANS_URL);
+  const response = await fetch(getStripeApiUrl('plans'));
   const data = await response.json();
   return data && Array.isArray(data) ? data : [];
 };
@@ -49,7 +47,7 @@ export const createStripeCheckoutSession = async (
   const token = await getAccessToken();
   const isEmbeddedCheckout = isTauriAppPlatform();
 
-  const response = await fetch(WEB_STRIPE_CHECKOUT_URL, {
+  const response = await fetch(getStripeApiUrl('checkout'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -91,7 +89,7 @@ export type StripePortalFlow = 'subscription_update';
 export const createStripePortalSession = async (flow?: StripePortalFlow) => {
   const token = await getAccessToken();
 
-  const response = await fetch(WEB_STRIPE_PORTAL_URL, {
+  const response = await fetch(getStripeApiUrl('portal'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

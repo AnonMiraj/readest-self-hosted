@@ -198,7 +198,7 @@ export class TxtToEpubConverter {
 
     const blob = await this.createEpub(chapters, metadata);
     return {
-      file: new File([blob], fileName),
+      file: await this.createEpubFile(blob, fileName),
       bookTitle,
       chapterCount: chapters.length,
       language,
@@ -263,7 +263,7 @@ export class TxtToEpubConverter {
 
     const blob = await this.createEpub(chapters, metadata);
     return {
-      file: new File([blob], fileName),
+      file: await this.createEpubFile(blob, fileName),
       bookTitle,
       chapterCount: chapters.length,
       language,
@@ -957,6 +957,19 @@ export class TxtToEpubConverter {
     await zipWriter.add('content.opf', new TextReader(contentOpf), zipWriteOptions);
 
     return await zipWriter.close();
+  }
+
+  private async createEpubFile(blob: Blob, fileName: string): Promise<File> {
+    // zip.js can return a Blob from a different JavaScript realm (notably in
+    // jsdom and embedded WebViews). File() stringifies a cross-realm Blob to
+    // "[object Blob]", producing a corrupt 13-byte EPUB. Preserve the zero-copy
+    // browser path and normalize only foreign Blob instances through bytes.
+    const blobValue: unknown = blob;
+    const content: BlobPart =
+      blobValue instanceof Blob
+        ? blobValue
+        : await (blobValue as { arrayBuffer(): Promise<ArrayBuffer> }).arrayBuffer();
+    return new File([content], fileName, { type: 'application/epub+zip' });
   }
 
   private detectEncoding(buffer: ArrayBuffer): string | undefined {

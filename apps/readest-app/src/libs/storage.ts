@@ -11,14 +11,7 @@ import {
   ProgressPayload,
 } from '@/utils/transfer';
 
-const API_ENDPOINTS = {
-  upload: getAPIBaseUrl() + '/storage/upload',
-  download: getAPIBaseUrl() + '/storage/download',
-  delete: getAPIBaseUrl() + '/storage/delete',
-  stats: getAPIBaseUrl() + '/storage/stats',
-  list: getAPIBaseUrl() + '/storage/list',
-  purge: getAPIBaseUrl() + '/storage/purge',
-};
+const getStorageApiEndpoint = (path: string) => `${getAPIBaseUrl()}/storage/${path}`;
 
 export const createProgressHandler = (
   totalFiles: number,
@@ -48,7 +41,7 @@ export const uploadFile = async (
   media?: string,
 ) => {
   try {
-    const response = await fetchWithAuth(API_ENDPOINTS.upload, {
+    const response = await fetchWithAuth(getStorageApiEndpoint('upload'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -93,7 +86,7 @@ export const uploadReplicaFile = async (
   onProgress?: ProgressHandler,
 ) => {
   try {
-    const response = await fetchWithAuth(API_ENDPOINTS.upload, {
+    const response = await fetchWithAuth(getStorageApiEndpoint('upload'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -128,7 +121,7 @@ export const batchGetDownloadUrls = async (files: { lfp: string; cfp: string }[]
     }
     const filePaths = files.map((file) => file.cfp);
     const fileKeys = filePaths.map((path) => `${userId}/${path}`);
-    const response = await fetchWithAuth(`${API_ENDPOINTS.download}`, {
+    const response = await fetchWithAuth(getStorageApiEndpoint('download'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -181,7 +174,7 @@ export const downloadFile = async ({
       }
       const fileKey = `${userId}/${cfp}`;
       const response = await fetchWithAuth(
-        `${API_ENDPOINTS.download}?fileKey=${encodeURIComponent(fileKey)}`,
+        `${getStorageApiEndpoint('download')}?fileKey=${encodeURIComponent(fileKey)}`,
         {
           method: 'GET',
         },
@@ -228,9 +221,12 @@ export const deleteFile = async (filePath: string) => {
     }
 
     const fileKey = `${userId}/${filePath}`;
-    await fetchWithAuth(`${API_ENDPOINTS.delete}?fileKey=${encodeURIComponent(fileKey)}`, {
-      method: 'DELETE',
-    });
+    await fetchWithAuth(
+      `${getStorageApiEndpoint('delete')}?fileKey=${encodeURIComponent(fileKey)}`,
+      {
+        method: 'DELETE',
+      },
+    );
   } catch (error) {
     // Best-effort cloud cleanup: removing the remote copy is non-critical and
     // callers dispatch this without awaiting, so throwing here surfaces as an
@@ -254,7 +250,7 @@ export interface StorageStats {
 
 export const getStorageStats = async (): Promise<StorageStats> => {
   try {
-    const response = await fetchWithAuth(API_ENDPOINTS.stats, {
+    const response = await fetchWithAuth(getStorageApiEndpoint('stats'), {
       method: 'GET',
     });
 
@@ -303,9 +299,8 @@ export const listFiles = async (params?: ListFilesParams): Promise<ListFilesResp
     if (params?.bookHash) queryParams.set('bookHash', params.bookHash);
     if (params?.search) queryParams.set('search', params.search);
 
-    const url = queryParams.toString()
-      ? `${API_ENDPOINTS.list}?${queryParams.toString()}`
-      : API_ENDPOINTS.list;
+    const listEndpoint = getStorageApiEndpoint('list');
+    const url = queryParams.toString() ? `${listEndpoint}?${queryParams.toString()}` : listEndpoint;
 
     const response = await fetchWithAuth(url, {
       method: 'GET',
@@ -363,7 +358,7 @@ export const purgeFiles = async (
       fileKeys = filePathsOrKeys.map((path) => `${userId}/${path}`);
     }
 
-    const response = await fetchWithAuth(API_ENDPOINTS.purge, {
+    const response = await fetchWithAuth(getStorageApiEndpoint('purge'), {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

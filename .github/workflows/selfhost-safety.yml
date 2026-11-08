@@ -1,0 +1,35 @@
+name: Selfhost Safety
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - selfhost-main
+  pull_request:
+    branches:
+      - main
+      - selfhost-main
+
+permissions:
+  contents: read
+
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install workflow test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep
+      - name: Test stable release synchronization policy
+        run: |
+          bash scripts/test-select-latest-stable-tag.sh
+          bash scripts/test-sync-upstream-workflow.sh
+          bash scripts/test-prepare-selfhost-release.sh
+          bash scripts/test-selfhost-release-workflow.sh
+          bash scripts/test-selfhost-android-arm64-workflow.sh
+      - name: Run public fork safety scan
+        run: bash scripts/scan-public-fork-safety.sh

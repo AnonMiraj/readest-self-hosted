@@ -1,0 +1,171 @@
+name: Release Selfhost
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Selfhost release tag to create or update
+        required: true
+        type: string
+      release_version:
+        description: Version to package, without a leading v. Defaults to the release tag version.
+        required: false
+        type: string
+  push:
+    tags:
+      - 'selfhost-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-selfhost-${{ github.repository }}-${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+
+jobs:
+  release-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_version: ${{ steps.metadata.outputs.release_version }}
+    steps:
+      - name: Resolve release metadata
+        id: metadata
+        env:
+          INPUT_RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          release_tag="${{ env.RELEASE_TAG }}"
+          version="${INPUT_RELEASE_VERSION:-}"
+          if [ -z "$version" ]; then
+            version="${release_tag#selfhost-v}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Unable to resolve a valid release version from ${release_tag}"
+            exit 1
+          fi
+          if [ "$release_tag" != "selfhost-v${version}" ]; then
+            echo "::error::Release tag ${release_tag} does not match version ${version}"
+            exit 1
+          fi
+          echo "release_version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    uses: ./.github/workflows/build-selfhost.yml
+    needs: release-metadata
+    with:
+      release_version: ${{ needs.release-metadata.outputs.release_version }}
+    secrets: inherit
+
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+      - release-metadata
+      - build
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 24
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+
+      - name: Flatten and validate release assets
+        env:
+          SELFHOST_RESOLVED_RELEASE_VERSION: ${{ needs.release-metadata.outputs.release_version }}
+          SELFHOST_RELEASE_ASSETS_DIR: release-assets
+          SELFHOST_RELEASE_NOTES_PATH: release-notes-selfhost.md
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          mapfile -t duplicate_names < <(find artifacts -type f -printf '%f\n' | sort | uniq -d)
+          if [ "${#duplicate_names[@]}" -ne 0 ]; then
+            echo "::error::Duplicate artifact basenames would overwrite release assets"
+            printf '%s\n' "${duplicate_names[@]}"
+            exit 1
+          fi
+          while IFS= read -r -d '' artifact; do
+            cp "$artifact" release-assets/
+          done < <(find artifacts -type f -print0)
+          SELFHOST_RELEASE_PUB_DATE=$(git show -s --format=%cI "$GITHUB_SHA")
+          export SELFHOST_RELEASE_PUB_DATE
+          node scripts/prepare-selfhost-release.mjs
+
+      - name: Create draft, upload assets, and publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          release_tag="${{ env.RELEASE_TAG }}"
+          git fetch --force --tags origin
+          if git rev-parse -q --verify "refs/tags/${release_tag}^{commit}" >/dev/null; then
+            tag_commit=$(git rev-parse "refs/tags/${release_tag}^{commit}")
+            if [ "$tag_commit" != "$GITHUB_SHA" ]; then
+              echo "::error::Existing tag ${release_tag} points to ${tag_commit}, expected ${GITHUB_SHA}"
+              exit 1
+            fi
+          else
+            git tag "$release_tag" "$GITHUB_SHA"
+            git push origin "refs/tags/${release_tag}"
+          fi
+
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            release_state=$(gh release view "$release_tag" --json isDraft,isPrerelease)
+            if [ "$(jq -r .isPrerelease <<< "$release_state")" != false ]; then
+              echo "::error::Existing prereleases cannot be resumed as stable selfhost releases"
+              exit 1
+            fi
+            if [ "$(jq -r .isDraft <<< "$release_state")" != true ]; then
+              echo "::error::Existing public releases are immutable"
+              exit 1
+            fi
+            gh release edit "$release_tag" \
+              --draft \
+              --prerelease=false \
+              --title "Readest Selfhost ${release_tag}" \
+              --notes-file release-notes-selfhost.md
+          else
+            gh release create "$release_tag" \
+              --draft \
+              --prerelease=false \
+              --title "Readest Selfhost ${release_tag}" \
+              --notes-file release-notes-selfhost.md
+          fi
+
+          gh release upload "$release_tag" release-assets/* --clobber
+
+          find release-assets -maxdepth 1 -type f -printf '%f\t%s\n' | sort > expected-assets.tsv
+          inventory_matches=false
+          for attempt in {1..5}; do
+            gh release view "$release_tag" --json assets \
+              --jq '.assets[] | [.name, .size] | @tsv' | sort > remote-assets.tsv
+            if cmp -s expected-assets.tsv remote-assets.tsv; then
+              inventory_matches=true
+              break
+            fi
+            echo "Remote asset inventory is not consistent yet (attempt ${attempt}/5)"
+            sleep 2
+          done
+          if [ "$inventory_matches" != true ]; then
+            diff -u expected-assets.tsv remote-assets.tsv || true
+            echo "::error::Remote release asset names or sizes do not match the validated local set"
+            exit 1
+          fi
+
+          gh release edit "$release_tag" \
+            --draft=false \
+            --prerelease=false \
+            --title "Readest Selfhost ${release_tag}" \
+            --notes-file release-notes-selfhost.md \
+            --latest
