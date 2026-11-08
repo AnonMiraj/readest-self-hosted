@@ -1,0 +1,68 @@
+name: Build Selfhost Debug APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      SELFHOST_PRODUCT_NAME: Readest Selfhost
+      SELFHOST_APP_IDENTIFIER: com.readest.selfhost
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize submodules
+        run: git submodule update --init --recursive
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager "ndk;28.2.13676358"
+
+      - name: Install dependencies
+        run: pnpm install --no-optional --prefer-offline
+
+      - name: Setup app vendors
+        run: pnpm --filter @readest/readest-app setup-vendors
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Patch selfhost app metadata
+        working-directory: apps/readest-app
+        run: node scripts/patch-tauri-selfhost.mjs
+
+      - name: Build debug arm64 APK
+        working-directory: apps/readest-app
+        run: pnpm tauri android build -t aarch64 --debug --apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: readest-selfhost-debug-arm64
+          path: apps/readest-app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
