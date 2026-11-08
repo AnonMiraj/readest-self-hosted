@@ -35,12 +35,6 @@ jobs:
           distribution: zulu
           java-version: '17'
 
-      - name: Install NDK
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-        run: yes | /usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager "ndk;28.2.13676358"
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
 
@@ -58,11 +52,12 @@ jobs:
 
       - name: Build debug arm64 APK
         working-directory: apps/readest-app
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
-        run: pnpm tauri android build -t aarch64 --debug --apk
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          export NDK_HOME="$(ls -d /usr/local/lib/android/sdk/ndk/* | sort -V | tail -1)"
+          echo "Using NDK_HOME=$NDK_HOME"
+          pnpm tauri android build -t aarch64 --debug --apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
