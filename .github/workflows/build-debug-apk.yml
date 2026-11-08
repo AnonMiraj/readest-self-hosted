@@ -56,6 +56,20 @@ jobs:
           rm -rf src-tauri/gen/android
           pnpm tauri android init
 
+      - name: Create a private signing key
+        working-directory: apps/readest-app
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/selfhost.jks" \
+            -storepass selfhost -keypass selfhost -alias selfhost \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Readest Selfhost"
+          cat > src-tauri/gen/android/keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/selfhost.jks
+          storePassword=selfhost
+          keyAlias=selfhost
+          keyPassword=selfhost
+          EOF
+
       - name: Build debug arm64 APK
         working-directory: apps/readest-app
         run: |
@@ -63,11 +77,11 @@ jobs:
           export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
           export NDK_HOME="$(ls -d /usr/local/lib/android/sdk/ndk/* | sort -V | tail -1)"
           echo "Using NDK_HOME=$NDK_HOME"
-          pnpm tauri android build -t aarch64 --debug --apk
+          pnpm tauri android build -t aarch64 --apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: readest-selfhost-debug-arm64
+          name: readest-selfhost-arm64
           path: apps/readest-app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
